@@ -1135,7 +1135,7 @@ void OFKTStateSolver::removeNode(OFKTNode* node,
   current_state_.joint_transforms.erase(node->getJointName());
 
   std::vector<OFKTNode*> children = node->getChildren();
-  for (auto* child : node->getChildren())
+  for (auto* child : children)
     removeNode(child, removed_links, removed_joints, removed_active_joints, removed_active_joints_indices);
 
   if (node->getParent() != nullptr)
