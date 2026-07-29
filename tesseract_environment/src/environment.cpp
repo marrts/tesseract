@@ -527,8 +527,51 @@ std::unique_ptr<Environment::Implementation> Environment::Implementation::clone(
     (void)cloned_solver.release();
 
   cloned_env->state_solver = std::unique_ptr<tesseract_scene_graph::MutableStateSolver>(p);
-  cloned_env->kinematics_information = kinematics_information;
-  cloned_env->kinematics_factory = kinematics_factory;
+  auto clone_plugin_infos = [](const auto& source_plugin_infos) {
+    auto cloned_plugin_infos = source_plugin_infos;
+    cloned_plugin_infos.clear();
+    for (const auto& group : source_plugin_infos)
+    {
+      tesseract_common::PluginInfoContainer cloned_group;
+      cloned_group.default_plugin = group.second.default_plugin;
+      for (const auto& plugin : group.second.plugins)
+      {
+        tesseract_common::PluginInfo cloned_plugin;
+        cloned_plugin.class_name = plugin.second.class_name;
+        cloned_plugin.config = YAML::Clone(plugin.second.config);
+        cloned_group.plugins.emplace(plugin.first, std::move(cloned_plugin));
+      }
+      cloned_plugin_infos.emplace(group.first, std::move(cloned_group));
+    }
+    return cloned_plugin_infos;
+  };
+
+  auto cloned_kinematics_information = kinematics_information;
+  auto& cloned_plugin_info = cloned_kinematics_information.kinematics_plugin_info;
+  cloned_plugin_info.fwd_plugin_infos = clone_plugin_infos(kinematics_information.kinematics_plugin_info.fwd_plugin_infos);
+  cloned_plugin_info.inv_plugin_infos = clone_plugin_infos(kinematics_information.kinematics_plugin_info.inv_plugin_infos);
+  cloned_env->kinematics_information = std::move(cloned_kinematics_information);
+
+  cloned_env->kinematics_factory = tesseract_kinematics::KinematicsPluginFactory();
+  const auto& detached_plugin_info = cloned_env->kinematics_information.kinematics_plugin_info;
+  for (const auto& search_path : detached_plugin_info.search_paths)
+    cloned_env->kinematics_factory.addSearchPath(search_path);
+  for (const auto& search_library : detached_plugin_info.search_libraries)
+    cloned_env->kinematics_factory.addSearchLibrary(search_library);
+  for (const auto& group : detached_plugin_info.fwd_plugin_infos)
+  {
+    for (const auto& plugin : group.second.plugins)
+      cloned_env->kinematics_factory.addFwdKinPlugin(group.first, plugin.first, plugin.second);
+    if (!group.second.default_plugin.empty())
+      cloned_env->kinematics_factory.setDefaultFwdKinPlugin(group.first, group.second.default_plugin);
+  }
+  for (const auto& group : detached_plugin_info.inv_plugin_infos)
+  {
+    for (const auto& plugin : group.second.plugins)
+      cloned_env->kinematics_factory.addInvKinPlugin(group.first, plugin.first, plugin.second);
+    if (!group.second.default_plugin.empty())
+      cloned_env->kinematics_factory.setDefaultInvKinPlugin(group.first, group.second.default_plugin);
+  }
   cloned_env->find_tcp_cb = find_tcp_cb;
   cloned_env->collision_margin_data = collision_margin_data;
 
